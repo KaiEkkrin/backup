@@ -11,6 +11,7 @@ import (
     "io/ioutil"
     "os"
     "path/filepath"
+    "sort"
     "strings"
     )
 
@@ -36,21 +37,25 @@ func (r *RunningJob) GetNewEditionFilename() string {
     return fmt.Sprintf("%s_%s%s", r.J.BaseName, r.E.String(), ArchiveSuffix)
 }
 
-func (r *RunningJob) GetOldEditionFilenames() (names []string, err error) {
+func (r *RunningJob) GetOldEditionFilenames() (names *ArchiveNames, err error) {
     dir := r.GetDir()
     infos, err := ioutil.ReadDir(dir)
     if err != nil {
-        return names, err
+        return nil, err
     }
 
+    names = &ArchiveNames{r.J.BaseName + "_", ArchiveSuffix, []ArchiveName{}}
     for i := 0; i < len(infos); i++ {
         if ((infos[i].Mode() & os.ModeType) == 0) {
             filename := infos[i].Name()
 
             // TODO Case sensitivity (or not).  For now,
             // I'm case sensitive.
-            if strings.HasPrefix(filename, r.J.BaseName) && strings.HasSuffix(filename, ArchiveSuffix) {
-                names = append(names, filepath.Join(dir, filename))
+            if strings.HasPrefix(filename, r.J.BaseName + "_") && strings.HasSuffix(filename, ArchiveSuffix) {
+                err = names.Append(dir, filename)
+                if err != nil {
+                    return nil, err
+                }
             }
         }
     }
@@ -59,8 +64,12 @@ func (r *RunningJob) GetOldEditionFilenames() (names []string, err error) {
 }
 
 func (r *RunningJob) GetNonSpecificExcludes() (names []string, err error) {
-    names, err = r.GetOldEditionFilenames()
+    archiveNames, err := r.GetOldEditionFilenames()
     if err == nil {
+        for i := 0; i < archiveNames.Len(); i++ {
+            names = append(names, archiveNames.GetName(i))
+        }
+
         names = append(names, r.GetNewEditionFilename(), r.GetDbFilename())
     }
 
@@ -290,8 +299,10 @@ func (r *RunningJob) DoRestore(prefix string) (err error) {
         return err
     }
 
-    for i := 0; i < len(archives); i++ {
-        err = restoreArchive(archives[i], prefix)
+    sort.Sort(archives)
+
+    for i := 0; i < archives.Len(); i++ {
+        err = restoreArchive(archives.GetName(i), prefix)
         if err != nil {
             return err
         }       
