@@ -94,7 +94,18 @@ func copyInto(filename string, writer io.Writer) error {
     return err
 }
 
-func (r *RunningJob) Run(excludes []string) (err error) {
+func copyOutOf(filename string, reader io.Reader) error {
+    f, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
+
+    _, err = io.Copy(f, reader)
+    return err
+}
+
+func (r *RunningJob) DoBackup(excludes []string) (err error) {
     // TODO Proper log file and summary on stdout
     fmt.Printf("Running backup %s ...\n", r.J.BaseName)
 
@@ -236,6 +247,10 @@ func (r *RunningJob) Run(excludes []string) (err error) {
 
             hdr.Name = tarPath
 
+            // ...and the uid and gid...
+            // TODO TODO (unix only)
+            // TODO also atime and mtime
+
             err = archTar.WriteHeader(hdr)
             if err != nil {
                 return err
@@ -261,5 +276,104 @@ func (r *RunningJob) Run(excludes []string) (err error) {
     // exist and blank entries?
 
     return err
+}
+
+func (r *RunningJob) DoRestore(prefix string) (err error) {
+    // TODO Again, proper log file and summary on stdout
+    fmt.Printf("Running restore %s...\n", r.J.BaseName)
+
+    // For now, we will simply unpack everything in order.
+    // TODO : Cross reference with the database, avoid
+    // unpacking old stuff?  (Allows delete?)
+    archives, err := r.GetOldEditionFilenames()
+    if err != nil {
+        return err
+    }
+
+    for i := 0; i < len(archives); i++ {
+        err = restoreArchive(archives[i], prefix)
+        if err != nil {
+            return err
+        }       
+    }
+
+    return nil
+}
+
+func restoreArchive(archive string, prefix string) (err error) {
+    fmt.Printf("Restoring %s...\n", archive)
+
+    if len(prefix) > 0 {
+        err = os.MkdirAll(prefix, 0777)
+        if err != nil {
+            return err
+        }
+    }
+
+    archFile, err := os.Open(archive)
+    if err != nil {
+        return err
+    }
+    defer archFile.Close()
+
+    archGz, err := gzip.NewReader(archFile)
+    if err != nil {
+        return err
+    }
+    defer archGz.Close()
+
+    archTar := tar.NewReader(archGz)
+
+    var readErr error
+    for readErr == nil {
+        var hdr *tar.Header
+        hdr, readErr = archTar.Next()
+        if readErr != nil && readErr != io.EOF {
+            return readErr
+        } else if readErr == nil {
+
+            restoredPath := filepath.Join(prefix, hdr.Name)
+            info := hdr.FileInfo()
+            mode := info.Mode()
+            
+            wroteSomething := false
+            if info.IsDir() {
+                err = os.Mkdir(restoredPath, mode.Perm())
+                if err != nil {
+                    fmt.Printf("%s : %s\n", restoredPath, err.Error())
+                } else {
+                    wroteSomething = true
+                }
+            } else if (mode & os.ModeSymlink) != 0 {
+                err = os.Symlink(hdr.Linkname, restoredPath)
+                if err != nil {
+                    fmt.Printf("%s : %s\n", restoredPath, err.Error())
+                } else {
+                    wroteSomething = true
+                }
+            } else if (mode & os.ModeType) == 0 {
+                // This is a regular file, write its contents
+                err = copyOutOf(restoredPath, archTar)
+                if err != nil {
+                    fmt.Printf("%s : %s\n", restoredPath, err.Error())
+                } else {
+                    wroteSomething = true
+                }
+            }
+        
+            if wroteSomething {
+                // Restore this thing's mode, ownership, etc
+                err = os.Chmod(restoredPath, mode.Perm())
+                if err != nil {
+                    fmt.Printf("%s : %s\n", restoredPath, err.Error())
+                }
+                
+                // TODO uid and gid (unix only)
+                // TODO atime and mtime
+            }
+        }
+    }
+
+    return nil
 }
 
