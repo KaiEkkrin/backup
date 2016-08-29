@@ -5,6 +5,7 @@ package main
 import (
     "database/sql"
     "encoding/base64"
+    "fmt"
     "reflect"
     "time"
     _ "github.com/mattn/go-sqlite3"
@@ -104,12 +105,15 @@ func NewSeenDb(filename string, edition *Edition) (*SeenDb, error) {
     }
 
     // Create table if not already there, ignoring result
-    db.Exec(
-        `create table files
+    _, err = db.Exec(
+        `create table files(
         filename text primary key,
         edition integer,
         mtime integer,
-        hash text`)
+        hash text)`)
+    if err != nil {
+        fmt.Printf("%s\n", err.Error())
+    }
 
     return &SeenDb{db, edition}, nil
 }

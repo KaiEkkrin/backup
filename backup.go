@@ -17,6 +17,8 @@ type Job struct {
     Path string
 
     // Regular expression strings to exclude.
+    // TODO Actually compile these into regexps, etc.
+    // TODO Or: make it globs instead?  More intuitive?
     Excludes []string
 }
 

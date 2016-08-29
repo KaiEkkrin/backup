@@ -9,12 +9,19 @@ import (
     "time"
     )
 
+const (
+    /* This time string is meant to be included in filenames,
+     * so we avoid bad characters like :
+     */
+    TimeFormat = "2006-01-02 15-04-05 MST"
+    )
+
 type Edition struct {
     When time.Time
 }
 
 func (e *Edition) String() string {
-    return e.When.Format(time.RFC3339)
+    return e.When.Format(TimeFormat)
 }
 
 func (e *Edition) Unix() int64 {
@@ -26,7 +33,7 @@ func EditionFromNow() *Edition {
 }
 
 func EditionFromString(str string) (*Edition, error) {
-    when, err := time.Parse(time.RFC3339, str)
+    when, err := time.Parse(TimeFormat, str)
     if err != nil {
         return nil, err
     } else {
