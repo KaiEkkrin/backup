@@ -6,6 +6,7 @@ import (
     "encoding/json"
     "fmt"
     "os"
+    "path/filepath"
     )
 
 type Job struct {
@@ -16,9 +17,8 @@ type Job struct {
     // The path to archive.
     Path string
 
-    // Regular expression strings to exclude.
-    // TODO Actually compile these into regexps, etc.
-    // TODO Or: make it globs instead?  More intuitive?
+    // Path glob strings to exclude.  (Leaf name, or
+    // whole path).
     Excludes []string
 }
 
@@ -57,7 +57,14 @@ func RunBackup(jobPath string) (err error) {
             return err
         }
 
-        nonSpecificExcludes = append(nonSpecificExcludes, excl...)
+        for j := 0; j < len(excl); j++ {
+            absExcl, err := filepath.Abs(excl[j])
+            if err != nil {
+                return err
+            }
+
+            nonSpecificExcludes = append(nonSpecificExcludes, absExcl)
+        }
     }
 
     // Run all the jobs

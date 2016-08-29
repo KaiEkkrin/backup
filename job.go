@@ -37,7 +37,8 @@ func (r *RunningJob) GetNewEditionFilename() string {
 }
 
 func (r *RunningJob) GetOldEditionFilenames() (names []string, err error) {
-    infos, err := ioutil.ReadDir(r.GetDir())
+    dir := r.GetDir()
+    infos, err := ioutil.ReadDir(dir)
     if err != nil {
         return names, err
     }
@@ -49,7 +50,7 @@ func (r *RunningJob) GetOldEditionFilenames() (names []string, err error) {
             // TODO Case sensitivity (or not).  For now,
             // I'm case sensitive.
             if strings.HasPrefix(filename, r.J.BaseName) && strings.HasSuffix(filename, ArchiveSuffix) {
-                names = append(names, filename)
+                names = append(names, filepath.Join(dir, filename))
             }
         }
     }
@@ -97,17 +98,9 @@ func (r *RunningJob) Run(excludes []string) (err error) {
     // TODO Proper log file and summary on stdout
     fmt.Printf("Running backup %s ...\n", r.J.BaseName)
 
-    // Construct the absolute exclude paths:
-    var absExcludes []string
-    for i := 0; i < len(excludes); i++ {
-        absExclude, err := filepath.Abs(excludes[i])
-        if err != nil {
-            return err
-        }
-
-        fmt.Printf("  Excluding: %s\n", absExclude)
-        absExcludes = append(absExcludes, absExclude)
-    }
+    // Construct all excludes (out of the general ones
+    // and the specific ones to this job)
+    allExcludes := append(excludes, r.J.Excludes...)
 
     // Open up the database:
     // TODO: Encryption (here and below!)
@@ -158,8 +151,22 @@ func (r *RunningJob) Run(excludes []string) (err error) {
             return err
         }
 
-        for i := 0; i < len(absExcludes); i++ {
-            if absPath == absExcludes[i] {
+        for i := 0; i < len(allExcludes); i++ {
+            // Check the whole path
+            excluded, err := filepath.Match(allExcludes[i], absPath)
+            if err != nil {
+                return err
+            }
+
+            // If that didn't match, check the leaf name
+            if !excluded {
+                excluded, err = filepath.Match(allExcludes[i], info.Name())
+                if err != nil {
+                    return err
+                }
+            }
+
+            if excluded {
                 fmt.Printf("%s : Excluded\n", path)
                 return getIgnoreValue()
             }
