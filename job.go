@@ -1,3 +1,5 @@
+/* Describes a job as parsed from the jobs file. */
+
 package main
 
 import (
@@ -15,10 +17,14 @@ type Job struct {
     Path string
 
     // Regular expression strings to exclude.
-    //Excludes []string
+    Excludes []string
 }
 
-func RunJob(jobPath string) (err error) {
+func RunBackup(jobPath string) (err error) {
+    // Decree an edition for this backup:
+    edition := EditionFromNow()
+    fmt.Printf("Running backup edition %s\n", edition.String())
+
     // Read that job file in:
     f, err := os.Open(jobPath)
     if err != nil {
@@ -35,7 +41,12 @@ func RunJob(jobPath string) (err error) {
         }
 
         // TODO run job here :)
-        fmt.Printf("Found job %s with path %s\n", job.BaseName, job.Path)
+        fmt.Printf("%s : Backing up %s ...\n", job.BaseName, job.Path)
+        if len(job.Excludes) > 0 {
+            for i := 0; i < len(job.Excludes); i++ {
+                fmt.Printf("%s : Excluding %s\n", job.BaseName, job.Excludes[i])
+            }
+        }
     }
 
     return nil

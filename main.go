@@ -8,14 +8,14 @@ import (
 
 func main() {
     /* Our argument will be a json file that describes
-     * the backup job to run.
+     * the backup job(s) to run.
      * That file itself is an encoding of the Job
      * structure. (job.go)
      */
-    job := flag.String("job", "backup.json", "Json file describing the backup job")
+    jobs := flag.String("job", "backup.json", "Json file describing the backup job")
     flag.Parse()
 
-    err := RunJob(*job)
+    err := RunBackup(*jobs)
     if err != nil {
         fmt.Printf("%s\n", err.Error())
         os.Exit(1)
