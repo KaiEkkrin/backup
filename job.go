@@ -214,11 +214,20 @@ func (r *RunningJob) Run(excludes []string) (err error) {
                 }
             }
 
-            // Write the header:
+            // Write the header.
+            // Make sure I fix the name, which is defaulted
+            // to the leaf name here:
             hdr, err := tar.FileInfoHeader(info, link)
             if err != nil {
                 return err
             }
+
+            tarPath := filepath.Clean(path)
+            if info.IsDir() {
+                tarPath = fmt.Sprintf("%s%c", tarPath, os.PathSeparator)
+            }
+
+            hdr.Name = tarPath
 
             err = archTar.WriteHeader(hdr)
             if err != nil {
