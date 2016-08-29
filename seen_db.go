@@ -107,10 +107,11 @@ func NewSeenDb(filename string, edition *Edition) (*SeenDb, error) {
     // Create table if not already there, ignoring result
     _, err = db.Exec(
         `create table files(
-        filename text primary key,
+        filename text,
         edition integer,
         mtime integer,
-        hash text)`)
+        hash text,
+        primary key (filename, edition))`)
     if err != nil {
         fmt.Printf("%s\n", err.Error())
     }
