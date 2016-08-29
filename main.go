@@ -10,7 +10,8 @@ func main() {
     /* Our argument will be a json file that describes
      * the backup job(s) to run.
      * That file itself is an encoding of the Job
-     * structure. (job.go)
+     * structure. (backup.go)
+     * TODO : Support removing old editions, etc.
      */
     jobs := flag.String("job", "backup.json", "Json file describing the backup job")
     flag.Parse()

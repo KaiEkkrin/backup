@@ -1,54 +1,69 @@
-/* Describes a job as parsed from the jobs file. */
+/* A running backup job. */
 
 package main
 
 import (
-    "encoding/json"
     "fmt"
+    "io/ioutil"
     "os"
+    "path/filepath"
+    "strings"
     )
 
-type Job struct {
-    // The base file name for tar and db files that get
-    // created.
-    BaseName string
+const (
+    ArchiveSuffix = ".tar.gz"
+    DbSuffix = "_seen.db"
+    )
 
-    // The path to archive.
-    Path string
-
-    // Regular expression strings to exclude.
-    Excludes []string
+type RunningJob struct {
+    J Job
+    E *Edition
 }
 
-func RunBackup(jobPath string) (err error) {
-    // Decree an edition for this backup:
-    edition := EditionFromNow()
-    fmt.Printf("Running backup edition %s\n", edition.String())
+func (r *RunningJob) GetDir() string {
+    return filepath.Dir(r.J.BaseName)
+}
 
-    // Read that job file in:
-    f, err := os.Open(jobPath)
+func (r *RunningJob) GetDbFilename() string {
+    return fmt.Sprintf("%s%s", r.J.BaseName, DbSuffix)
+}
+
+func (r *RunningJob) GetNewEditionFilename() string {
+    return fmt.Sprintf("%s_%s%s", r.J.BaseName, r.E.String(), ArchiveSuffix)
+}
+
+func (r *RunningJob) GetOldEditionFilenames() (names []string, err error) {
+    infos, err := ioutil.ReadDir(r.GetDir())
     if err != nil {
-        return err
+        return names, err
     }
 
-    defer f.Close()
-    decoder := json.NewDecoder(f)
-    for decoder.More() {
-        var job Job
-        err = decoder.Decode(&job)
-        if err != nil {
-            return err
-        }
+    for i := 0; i < len(infos); i++ {
+        if ((infos[i].Mode() & os.ModeType) == 0) {
+            filename := infos[i].Name()
 
-        // TODO run job here :)
-        fmt.Printf("%s : Backing up %s ...\n", job.BaseName, job.Path)
-        if len(job.Excludes) > 0 {
-            for i := 0; i < len(job.Excludes); i++ {
-                fmt.Printf("%s : Excluding %s\n", job.BaseName, job.Excludes[i])
+            // TODO Case sensitivity (or not).  For now,
+            // I'm case sensitive.
+            if strings.HasPrefix(filename, r.J.BaseName) && strings.HasSuffix(filename, ArchiveSuffix) {
+                names = append(names, filename)
             }
         }
     }
 
-    return nil
+    return names, nil
+}
+
+func (r *RunningJob) GetNonSpecificExcludes() (names []string, err error) {
+    names, err = r.GetOldEditionFilenames()
+    if err == nil {
+        names = append(names, r.GetNewEditionFilename(), r.GetDbFilename())
+    }
+
+    return names, err
+}
+
+func (r *RunningJob) Run(excludes []string) (err error) {
+    // TODO TODO :)
+    return err
 }
 
