@@ -20,6 +20,9 @@ type Job struct {
     // Path glob strings to exclude.  (Leaf name, or
     // whole path).
     Excludes []string
+
+    // The passphrase to encrypt with.
+    Passphrase string
 }
 
 func readRunningJobs(jobPath string, edition *Edition) (runningJobs []*RunningJob, err error) {

@@ -1,4 +1,6 @@
-/* A running backup job. */
+/* A running backup job.
+ * TODO Replace the gzip with just the openpgp compression?
+*/
 
 package main
 
@@ -6,6 +8,7 @@ import (
     "archive/tar"
     "compress/gzip"
     "crypto/sha256"
+    "errors"
     "fmt"
     "io"
     "io/ioutil"
@@ -13,11 +16,14 @@ import (
     "path/filepath"
     "sort"
     "strings"
+    "golang.org/x/crypto/openpgp"
+    "golang.org/x/crypto/openpgp/armor"
     )
 
 const (
-    ArchiveSuffix = ".tar.gz"
+    ArchiveSuffix = ".tar.gpg"
     DbSuffix = "_seen.db"
+    EncryptionType = "PGP SIGNATURE"
     )
 
 type RunningJob struct {
@@ -74,6 +80,10 @@ func (r *RunningJob) GetNonSpecificExcludes() (names []string, err error) {
     }
 
     return names, err
+}
+
+func (r *RunningJob) GetPassphrase() []byte {
+    return []byte(r.J.Passphrase)
 }
 
 func getHash(filename string) (hashBytes []byte, err error) {
@@ -139,7 +149,19 @@ func (r *RunningJob) DoBackup(excludes []string) (err error) {
     }
     defer archFile.Close()
 
-    archGz := gzip.NewWriter(archFile)
+    archArmor, err := armor.Encode(archFile, EncryptionType, nil)
+    if err != nil {
+        return err
+    }
+    defer archArmor.Close()
+
+    archGpg, err := openpgp.SymmetricallyEncrypt(archArmor, r.GetPassphrase(), nil, nil)
+    if err != nil {
+        return err
+    }
+    defer archGpg.Close() 
+
+    archGz := gzip.NewWriter(archGpg)
     defer archGz.Close()
 
     archTar := tar.NewWriter(archGz)
@@ -301,8 +323,9 @@ func (r *RunningJob) DoRestore(prefix string) (err error) {
 
     sort.Sort(archives)
 
+    passphrase := r.GetPassphrase()
     for i := 0; i < archives.Len(); i++ {
-        err = restoreArchive(archives.GetName(i), prefix)
+        err = restoreArchive(archives.GetName(i), prefix, passphrase)
         if err != nil {
             return err
         }       
@@ -311,7 +334,7 @@ func (r *RunningJob) DoRestore(prefix string) (err error) {
     return nil
 }
 
-func restoreArchive(archive string, prefix string) (err error) {
+func restoreArchive(archive string, prefix string, passphrase []byte) (err error) {
     fmt.Printf("Restoring %s...\n", archive)
 
     if len(prefix) > 0 {
@@ -327,7 +350,33 @@ func restoreArchive(archive string, prefix string) (err error) {
     }
     defer archFile.Close()
 
-    archGz, err := gzip.NewReader(archFile)
+    archArmorBlock, err := armor.Decode(archFile)
+    if err != nil {
+        return err
+    }
+
+    if archArmorBlock.Type != EncryptionType {
+        return errors.New(fmt.Sprintf("Unexpected encryption type %s", archArmorBlock.Type))
+    }
+
+    prompt := func(keys []openpgp.Key, symmetric bool) (pp []byte, err error) {
+        pp = passphrase
+        if !symmetric {
+            err = errors.New("Expected symmetric encryption")
+        }
+
+        return pp, err
+    }
+
+    archMd, err := openpgp.ReadMessage(archArmorBlock.Body, nil, prompt, nil)
+    if err != nil {
+        return err
+    }
+
+    // TODO Verification?
+    fmt.Printf("Opened message. Encrypted %q, signed %q\n", archMd.IsEncrypted, archMd.IsSigned)
+
+    archGz, err := gzip.NewReader(archMd.UnverifiedBody)
     if err != nil {
         return err
     }
