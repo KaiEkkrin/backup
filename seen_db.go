@@ -6,6 +6,9 @@ import (
     "database/sql"
     "encoding/base64"
     "fmt"
+    "io"
+    "io/ioutil"
+    "os"
     "reflect"
     "time"
     _ "github.com/mattn/go-sqlite3"
@@ -14,6 +17,11 @@ import (
 type SeenDb struct {
     Db *sql.DB
     E *Edition // My current edition
+
+    // For re-encrypting the database when done:
+    Enc Encrypt
+    TempFile string
+    Filename string
 }
 
 func (d *SeenDb) Update(filename string, mtimeNow time.Time, getHash func() ([]byte, error)) (updated bool, err error) {
@@ -95,11 +103,87 @@ func (d *SeenDb) RemoveEdition(edition Edition) (err error) {
 }
 
 func (d *SeenDb) Close() error {
-    return d.Db.Close()
+    // Always make sure we delete the temp file:
+    defer os.Remove(d.TempFile)
+
+    // Close the database
+    dbErr := d.Db.Close()
+
+    // Re-encrypt the database file
+    f, err := os.Open(d.TempFile)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
+
+    cipher, err := os.Create(d.Filename)
+    if err != nil {
+        return err
+    }
+    defer cipher.Close()
+
+    plain, err := d.Enc.WrapWriter(cipher)
+    if err != nil {
+        return err
+    }
+    defer plain.Close()
+
+    _, err = io.Copy(plain, f)
+    if err != nil {
+        return err
+    }
+
+    return dbErr
 }
 
-func NewSeenDb(filename string, edition *Edition) (*SeenDb, error) {
-    db, err := sql.Open("sqlite3", filename)
+// Extracts the db into a temporary file, returning
+// the file path.
+func extractDb(filename string, encrypt Encrypt) (tempFile string, err error) {
+    f, err := ioutil.TempFile("", "seen_db")
+    if err != nil {
+        return "", err
+    }
+
+    tempFile = f.Name()
+    defer func() {
+        f.Close()
+        if err != nil {
+            os.Remove(tempFile)
+            tempFile = ""
+        }
+    }()
+
+    if cipher, cipherErr := os.Open(filename); cipherErr == nil {
+        fmt.Printf("Wrapping existing file...\n")
+        plain, err := encrypt.WrapReader(cipher)
+        if err == nil {
+            _, err = io.Copy(f, plain)
+        }
+    } else {
+        fmt.Printf("Creating new file... %s\n", tempFile)
+        // Just remove that temporary file, so that the
+        // db can create a new one in its place:
+        // (yeah, yeah, this process isn't quite secure)
+        os.Remove(tempFile)
+    }
+
+    return tempFile, err
+}
+
+func NewSeenDb(filename string, encrypt Encrypt, edition *Edition) (seenDb *SeenDb, err error) {
+    // Read the database out into a temporary file:
+    tempFile, err := extractDb(filename, encrypt)
+    if err != nil {
+        return nil, err
+    }
+
+    defer func() {
+        if err != nil {
+            os.Remove(tempFile)
+        }
+    }()
+
+    db, err := sql.Open("sqlite3", tempFile)
     if err != nil {
         return nil, err
     }
@@ -116,6 +200,6 @@ func NewSeenDb(filename string, edition *Edition) (*SeenDb, error) {
         fmt.Printf("%s\n", err.Error())
     }
 
-    return &SeenDb{db, edition}, nil
+    return &SeenDb{db, edition, encrypt, tempFile, filename}, nil
 }
 

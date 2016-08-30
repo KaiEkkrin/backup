@@ -8,7 +8,6 @@ import (
     "archive/tar"
     "compress/gzip"
     "crypto/sha256"
-    "errors"
     "fmt"
     "io"
     "io/ioutil"
@@ -16,14 +15,11 @@ import (
     "path/filepath"
     "sort"
     "strings"
-    "golang.org/x/crypto/openpgp"
-    "golang.org/x/crypto/openpgp/armor"
     )
 
 const (
     ArchiveSuffix = ".tar.gpg"
-    DbSuffix = "_seen.db"
-    EncryptionType = "PGP SIGNATURE"
+    DbSuffix = "_seen.db.gpg"
     )
 
 type RunningJob struct {
@@ -82,10 +78,6 @@ func (r *RunningJob) GetNonSpecificExcludes() (names []string, err error) {
     return names, err
 }
 
-func (r *RunningJob) GetPassphrase() []byte {
-    return []byte(r.J.Passphrase)
-}
-
 func getHash(filename string) (hashBytes []byte, err error) {
     f, err := os.Open(filename)
     if err != nil {
@@ -124,7 +116,7 @@ func copyOutOf(filename string, reader io.Reader) error {
     return err
 }
 
-func (r *RunningJob) DoBackup(excludes []string) (err error) {
+func (r *RunningJob) DoBackup(excludes []string, encrypt Encrypt) (err error) {
     // TODO Proper log file and summary on stdout
     fmt.Printf("Running backup %s ...\n", r.J.BaseName)
 
@@ -135,7 +127,7 @@ func (r *RunningJob) DoBackup(excludes []string) (err error) {
     // Open up the database:
     // TODO: Encryption (here and below!)
     fmt.Printf("Opening database %s\n", r.GetDbFilename())
-    seenDb, err := NewSeenDb(r.GetDbFilename(), r.E)
+    seenDb, err := NewSeenDb(r.GetDbFilename(), encrypt, r.E)
     if err != nil {
         return err
     }
@@ -149,19 +141,13 @@ func (r *RunningJob) DoBackup(excludes []string) (err error) {
     }
     defer archFile.Close()
 
-    archArmor, err := armor.Encode(archFile, EncryptionType, nil)
+    archPlain, err := encrypt.WrapWriter(archFile)
     if err != nil {
         return err
     }
-    defer archArmor.Close()
+    defer archPlain.Close()
 
-    archGpg, err := openpgp.SymmetricallyEncrypt(archArmor, r.GetPassphrase(), nil, nil)
-    if err != nil {
-        return err
-    }
-    defer archGpg.Close() 
-
-    archGz := gzip.NewWriter(archGpg)
+    archGz := gzip.NewWriter(archPlain)
     defer archGz.Close()
 
     archTar := tar.NewWriter(archGz)
@@ -309,7 +295,7 @@ func (r *RunningJob) DoBackup(excludes []string) (err error) {
     return err
 }
 
-func (r *RunningJob) DoRestore(prefix string) (err error) {
+func (r *RunningJob) DoRestore(prefix string, encrypt Encrypt) (err error) {
     // TODO Again, proper log file and summary on stdout
     fmt.Printf("Running restore %s...\n", r.J.BaseName)
 
@@ -323,9 +309,8 @@ func (r *RunningJob) DoRestore(prefix string) (err error) {
 
     sort.Sort(archives)
 
-    passphrase := r.GetPassphrase()
     for i := 0; i < archives.Len(); i++ {
-        err = restoreArchive(archives.GetName(i), prefix, passphrase)
+        err = restoreArchive(archives.GetName(i), prefix, encrypt)
         if err != nil {
             return err
         }       
@@ -334,7 +319,7 @@ func (r *RunningJob) DoRestore(prefix string) (err error) {
     return nil
 }
 
-func restoreArchive(archive string, prefix string, passphrase []byte) (err error) {
+func restoreArchive(archive string, prefix string, encrypt Encrypt) (err error) {
     fmt.Printf("Restoring %s...\n", archive)
 
     if len(prefix) > 0 {
@@ -350,33 +335,12 @@ func restoreArchive(archive string, prefix string, passphrase []byte) (err error
     }
     defer archFile.Close()
 
-    archArmorBlock, err := armor.Decode(archFile)
+    archPlain, err := encrypt.WrapReader(archFile)
     if err != nil {
         return err
     }
 
-    if archArmorBlock.Type != EncryptionType {
-        return errors.New(fmt.Sprintf("Unexpected encryption type %s", archArmorBlock.Type))
-    }
-
-    prompt := func(keys []openpgp.Key, symmetric bool) (pp []byte, err error) {
-        pp = passphrase
-        if !symmetric {
-            err = errors.New("Expected symmetric encryption")
-        }
-
-        return pp, err
-    }
-
-    archMd, err := openpgp.ReadMessage(archArmorBlock.Body, nil, prompt, nil)
-    if err != nil {
-        return err
-    }
-
-    // TODO Verification?
-    fmt.Printf("Opened message. Encrypted %q, signed %q\n", archMd.IsEncrypted, archMd.IsSigned)
-
-    archGz, err := gzip.NewReader(archMd.UnverifiedBody)
+    archGz, err := gzip.NewReader(archPlain)
     if err != nil {
         return err
     }
