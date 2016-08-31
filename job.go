@@ -15,6 +15,7 @@ import (
     "path/filepath"
     "sort"
     "strings"
+    "syscall"
     )
 
 const (
@@ -265,8 +266,17 @@ func (r *RunningJob) DoBackup(excludes []string, encrypt Encrypt) (err error) {
             hdr.Name = tarPath
 
             // ...and the uid and gid...
-            // TODO TODO (unix only)
-            // TODO also atime and mtime
+            if sys, found := info.Sys().(*syscall.Stat_t); found {
+                hdr.Uid = int(sys.Uid)
+                hdr.Gid = int(sys.Gid)
+
+                // TODO Extended attributes
+            }
+
+            // ...and the modification time.
+            // Note that it looks like the AccessTime field doesn't work,
+            // so I'm ignoring it
+            hdr.ModTime = info.ModTime()
 
             err = archTar.WriteHeader(hdr)
             if err != nil {
@@ -391,9 +401,21 @@ func restoreArchive(archive string, prefix string, encrypt Encrypt) (err error) 
                 if err != nil {
                     fmt.Printf("%s : %s\n", restoredPath, err.Error())
                 }
+
+                err = os.Chown(restoredPath, hdr.Uid, hdr.Gid)
+                if err != nil {
+                    fmt.Printf("%s : %s\n", restoredPath, err.Error())
+                }
+
+                // I'm not trying to restore the access time, because
+                // it seems we can't store it correctly.
+                // It's not terribly important anyway :)
+                err = os.Chtimes(restoredPath, hdr.ModTime, hdr.ModTime)
+                if err != nil {
+                    fmt.Printf("%s : %s\n", restoredPath, err.Error())
+                }
                 
-                // TODO uid and gid (unix only)
-                // TODO atime and mtime
+                // TODO Extended attributes
             }
         }
     }
