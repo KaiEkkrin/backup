@@ -18,6 +18,11 @@ type SeenDb struct {
     Db *sql.DB
     E *Edition // My current edition
 
+    // For performance, we'll retain a single transaction.
+    // TODO : Should I commit it and recreate it every now and
+    // again to avoid devouring loads of memory?
+    Tx *SeenTransaction
+
     // For re-encrypting the database when done:
     Enc Encrypt
     TempFile string
@@ -27,21 +32,11 @@ type SeenDb struct {
 func (d *SeenDb) Update(filename string, mtimeNow time.Time, getHash func() ([]byte, error)) (updated bool, err error) {
     mtimeNowUnix := mtimeNow.Unix()
 
-    tx, err := d.Db.Begin()
-    if err != nil {
-        return false, err
-    }
-
-    defer tx.Commit()
-
     // Find the most recent entry for this file:
     var mtimeThenUnix int64
     hashStr := ""
     err = func() error {
-        rows, err := tx.Query(
-            `select mtime, hash from files
-            where filename=?
-            order by mtime desc`, filename)
+        rows, err := d.Tx.GetLatestMtimeHash.Query(filename)
         if err != nil {
             return err
         }
@@ -86,8 +81,7 @@ func (d *SeenDb) Update(filename string, mtimeNow time.Time, getHash func() ([]b
 
     // If we got here, we do need a new edition,
     // insert it:
-    _, err = tx.Exec(
-        `insert into files values (?, ?, ?, ?)`,
+    _, err = d.Tx.InsertNewEdition.Exec(
         filename,
         d.E.Unix(),
         mtimeNowUnix,
@@ -96,15 +90,16 @@ func (d *SeenDb) Update(filename string, mtimeNow time.Time, getHash func() ([]b
 }
 
 func (d *SeenDb) RemoveEdition(edition Edition) (err error) {
-    _, err = d.Db.Exec(
-        `delete from files where edition=?`,
-        edition.Unix())
+    _, err = d.Tx.RemoveEdition.Exec(edition.Unix())
     return err
 }
 
 func (d *SeenDb) Close() error {
     // Always make sure we delete the temp file:
     defer os.Remove(d.TempFile)
+
+    // Complete the transaction
+    txErr := d.Tx.Close()
 
     // Close the database
     dbErr := d.Db.Close()
@@ -133,7 +128,11 @@ func (d *SeenDb) Close() error {
         return err
     }
 
-    return dbErr
+    if dbErr != nil {
+        return dbErr
+    }
+
+    return txErr
 }
 
 // Extracts the db into a temporary file, returning
@@ -189,6 +188,7 @@ func NewSeenDb(filename string, encrypt Encrypt, edition *Edition) (seenDb *Seen
     }
 
     // Create table if not already there, ignoring result
+    // TODO Store mtime nanos as well ?
     _, err = db.Exec(
         `create table files(
         filename text,
@@ -200,6 +200,13 @@ func NewSeenDb(filename string, encrypt Encrypt, edition *Edition) (seenDb *Seen
         fmt.Printf("%s\n", err.Error())
     }
 
-    return &SeenDb{db, edition, encrypt, tempFile, filename}, nil
+    // Open my starting transaction
+    tx, err := NewSeenTransaction(db)
+    if err != nil {
+        db.Close()
+        return nil, err
+    }
+
+    return &SeenDb{db, edition, tx, encrypt, tempFile, filename}, nil
 }
 
