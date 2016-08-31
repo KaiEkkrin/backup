@@ -5,6 +5,7 @@ package main
 import (
     "encoding/json"
     "fmt"
+    "io"
     "os"
     "path/filepath"
     )
@@ -33,14 +34,22 @@ func readRunningJobs(jobPath string, edition *Edition) (runningJobs []*RunningJo
 
     defer f.Close()
     decoder := json.NewDecoder(f)
-    for decoder.More() {
+
+    // Check eof, because merlin's version of go doesn't have decoder.More()
+    finished := false
+    for !finished {
         var job Job
         err = decoder.Decode(&job)
         if err != nil {
-            return runningJobs, err
+            if err == io.EOF {
+                finished = true
+                err = nil
+            } else {
+                return runningJobs, err
+            }
+        } else {
+            runningJobs = append(runningJobs, &RunningJob{job, edition})
         }
-
-        runningJobs = append(runningJobs, &RunningJob{job, edition})
     }
 
     return runningJobs, err
