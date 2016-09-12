@@ -3,11 +3,10 @@
 package main
 
 import (
-    "io"
-    )
+	"io"
+)
 
 type Encrypt interface {
-    WrapWriter(io.Writer) (io.WriteCloser, error)
-    WrapReader(io.Reader) (io.Reader, error)
+	WrapWriter(io.WriteSeeker) (io.WriteCloser, error)
+	WrapReader(io.ReadSeeker) (io.Reader, error)
 }
-
