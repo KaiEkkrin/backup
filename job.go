@@ -1,5 +1,4 @@
 /* A running backup job.
- * TODO Replace the gzip with just the openpgp compression?
  */
 
 package main
@@ -18,8 +17,8 @@ import (
 )
 
 const (
-	ArchiveSuffix = ".tar.gpg"
-	DbSuffix      = "_seen.db.gpg"
+	ArchiveSuffix = ".tar.kblob"
+	DbSuffix      = "_seen.db.kblob"
 )
 
 type RunningJob struct {

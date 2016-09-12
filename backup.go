@@ -88,7 +88,7 @@ func RunBackup(jobPath string) (err error) {
 
 	// Run all the jobs
 	for i := 0; i < len(runningJobs); i++ {
-		encrypt := NewEncryptOpenpgp(runningJobs[i].J.Passphrase)
+		encrypt := NewEncryptKblob(runningJobs[i].J.Passphrase)
 		err = runningJobs[i].DoBackup(nonSpecificExcludes, encrypt)
 		if err != nil {
 			return err
@@ -107,7 +107,7 @@ func RunRestore(jobPath string, prefix string) (err error) {
 
 	// Run all the jobs
 	for i := 0; i < len(runningJobs); i++ {
-		encrypt := NewEncryptOpenpgp(runningJobs[i].J.Passphrase)
+		encrypt := NewEncryptKblob(runningJobs[i].J.Passphrase)
 		err = runningJobs[i].DoRestore(prefix, encrypt)
 		if err != nil {
 			return err
