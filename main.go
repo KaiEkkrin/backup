@@ -23,12 +23,16 @@ func main() {
 	restore := flag.Bool("restore", false, "Set this to do a restore")
 	jobs := flag.String("job", "backup.json", "Json file describing the backup job")
 	prefix := flag.String("prefix", "", "Optional restore prefix")
+	replaceStart := flag.String("replaceStart", "", fmt.Sprintf("Optional list of <start of path in archive>%c<replacement>%c...", os.PathListSeparator, os.PathListSeparator))
+
 	flag.Parse()
 
 	var err error
 	if *backup {
 		err = RunBackup(*jobs)
 	} else {
+		replStart := NewReplStart(*replaceStart)
+
 		what := -1
 		if *restore {
 			what = Unpack_Restore
@@ -39,7 +43,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		err = RunUnpack(*jobs, *prefix, what)
+		err = RunUnpack(*jobs, *prefix, replStart, what)
 	}
 
 	if err != nil {
