@@ -296,7 +296,7 @@ func (r *RunningJob) backupFile(path string, info os.FileInfo, mode os.FileMode,
 }
 
 // `what' should be one of: Unpack_Test, Unpack_Restore
-func (r *RunningJob) DoUnpack(prefix string, replStart *ReplStart, encrypt Encrypt, what int) (err error) {
+func (r *RunningJob) DoUnpack(prefix string, repl Replacement, encrypt Encrypt, what int) (err error) {
 	// TODO Again, proper log file and summary on stdout
 	fmt.Printf("Running restore %s...\n", r.J.BaseName)
 
@@ -318,7 +318,7 @@ func (r *RunningJob) DoUnpack(prefix string, replStart *ReplStart, encrypt Encry
 	}
 
 	for i := 0; i < archives.Len(); i++ {
-		err = unpackArchive(archives.GetName(i), prefix, replStart, encrypt, unpackFile)
+		err = unpackArchive(archives.GetName(i), prefix, repl, encrypt, unpackFile)
 		if err != nil {
 			return err
 		}
@@ -327,7 +327,7 @@ func (r *RunningJob) DoUnpack(prefix string, replStart *ReplStart, encrypt Encry
 	return nil
 }
 
-func unpackArchive(archive string, prefix string, replStart *ReplStart, encrypt Encrypt, unpackFile func(string, *tar.Header, io.Reader) error) (err error) {
+func unpackArchive(archive string, prefix string, repl Replacement, encrypt Encrypt, unpackFile func(string, *tar.Header, io.Reader) error) (err error) {
 	fmt.Printf("Restoring %s...\n", archive)
 
 	if len(prefix) > 0 {
@@ -365,7 +365,7 @@ func unpackArchive(archive string, prefix string, replStart *ReplStart, encrypt 
 			return readErr
 		} else if readErr == nil {
 
-			replacedPath := replStart.Replace(hdr.Name)
+			replacedPath := repl.Replace(hdr.Name)
 			restoredPath := filepath.Join(prefix, replacedPath)
 			restoreErr := unpackFile(restoredPath, hdr, archTar)
 			if restoreErr != nil {

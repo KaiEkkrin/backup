@@ -24,6 +24,8 @@ func main() {
 	jobs := flag.String("job", "backup.json", "Json file describing the backup job")
 	prefix := flag.String("prefix", "", "Optional restore prefix")
 	replaceStart := flag.String("replaceStart", "", fmt.Sprintf("Optional list of <start of path in archive>%c<replacement>%c...", os.PathListSeparator, os.PathListSeparator))
+	replaceAny := flag.String("replace", "", fmt.Sprintf("Optional list of <path in archive>%c<replacement>%c...", os.PathListSeparator, os.PathListSeparator))
+	replaceAll := flag.String("replaceAll", "", fmt.Sprintf("Optional list of <path in archive>%c<replacement>%c...", os.PathListSeparator, os.PathListSeparator))
 
 	flag.Parse()
 
@@ -31,7 +33,24 @@ func main() {
 	if *backup {
 		err = RunBackup(*jobs)
 	} else {
-		replStart := NewReplStart(*replaceStart)
+		repl := new(Replacements)
+		err = repl.AddReplStart(*replaceStart)
+		if err != nil {
+			fmt.Printf("replaceStart : %s\n", err.Error())
+			os.Exit(1)
+		}
+
+		err = repl.AddReplAny(*replaceAny)
+		if err != nil {
+			fmt.Printf("replace : %s\n", err.Error())
+			os.Exit(1)
+		}
+
+		err = repl.AddReplAll(*replaceAll)
+		if err != nil {
+			fmt.Printf("replaceAll : %s\n", err.Error())
+			os.Exit(1)
+		}
 
 		what := -1
 		if *restore {
@@ -43,7 +62,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		err = RunUnpack(*jobs, *prefix, replStart, what)
+		err = RunUnpack(*jobs, *prefix, repl, what)
 	}
 
 	if err != nil {
