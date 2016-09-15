@@ -98,7 +98,7 @@ func RunBackup(jobPath string) (err error) {
 	return nil
 }
 
-func RunRestore(jobPath string, prefix string) (err error) {
+func RunUnpack(jobPath string, prefix string, what int) (err error) {
 	// We don't need an edition here:
 	runningJobs, err := readRunningJobs(jobPath, nil)
 	if err != nil {
@@ -108,7 +108,7 @@ func RunRestore(jobPath string, prefix string) (err error) {
 	// Run all the jobs
 	for i := 0; i < len(runningJobs); i++ {
 		encrypt := NewEncryptKblob(runningJobs[i].J.Passphrase)
-		err = runningJobs[i].DoRestore(prefix, encrypt)
+		err = runningJobs[i].DoUnpack(prefix, encrypt, what)
 		if err != nil {
 			return err
 		}

@@ -7,6 +7,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,8 +18,10 @@ import (
 )
 
 const (
-	ArchiveSuffix = ".tar.kblob"
-	DbSuffix      = "_seen.db.kblob"
+	ArchiveSuffix  = ".tar.kblob"
+	DbSuffix       = "_seen.db.kblob"
+	Unpack_Test    = 0
+	Unpack_Restore = 1
 )
 
 type RunningJob struct {
@@ -292,7 +295,8 @@ func (r *RunningJob) backupFile(path string, info os.FileInfo, mode os.FileMode,
 	return
 }
 
-func (r *RunningJob) DoRestore(prefix string, encrypt Encrypt) (err error) {
+// `what' should be one of: Unpack_Test, Unpack_Restore
+func (r *RunningJob) DoUnpack(prefix string, encrypt Encrypt, what int) (err error) {
 	// TODO Again, proper log file and summary on stdout
 	fmt.Printf("Running restore %s...\n", r.J.BaseName)
 
@@ -306,8 +310,15 @@ func (r *RunningJob) DoRestore(prefix string, encrypt Encrypt) (err error) {
 
 	sort.Sort(archives)
 
+	var unpackFile func(string, *tar.Header, io.Reader) error
+	if what == Unpack_Test {
+		unpackFile = testFile
+	} else if what == Unpack_Restore {
+		unpackFile = restoreFile
+	}
+
 	for i := 0; i < archives.Len(); i++ {
-		err = restoreArchive(archives.GetName(i), prefix, encrypt)
+		err = unpackArchive(archives.GetName(i), prefix, encrypt, unpackFile)
 		if err != nil {
 			return err
 		}
@@ -316,7 +327,7 @@ func (r *RunningJob) DoRestore(prefix string, encrypt Encrypt) (err error) {
 	return nil
 }
 
-func restoreArchive(archive string, prefix string, encrypt Encrypt) (err error) {
+func unpackArchive(archive string, prefix string, encrypt Encrypt, unpackFile func(string, *tar.Header, io.Reader) error) (err error) {
 	fmt.Printf("Restoring %s...\n", archive)
 
 	if len(prefix) > 0 {
@@ -345,6 +356,7 @@ func restoreArchive(archive string, prefix string, encrypt Encrypt) (err error) 
 
 	archTar := tar.NewReader(archGz)
 
+	errorCount := 0
 	var readErr error
 	for readErr == nil {
 		var hdr *tar.Header
@@ -354,58 +366,57 @@ func restoreArchive(archive string, prefix string, encrypt Encrypt) (err error) 
 		} else if readErr == nil {
 
 			restoredPath := filepath.Join(prefix, hdr.Name)
-			info := hdr.FileInfo()
-			mode := info.Mode()
-
-			wroteSomething := false
-			if info.IsDir() {
-				err = os.Mkdir(restoredPath, mode.Perm())
-				if err != nil {
-					fmt.Printf("%s : %s\n", restoredPath, err.Error())
-				} else {
-					wroteSomething = true
-				}
-			} else if (mode & os.ModeSymlink) != 0 {
-				err = os.Symlink(hdr.Linkname, restoredPath)
-				if err != nil {
-					fmt.Printf("%s : %s\n", restoredPath, err.Error())
-				} else {
-					wroteSomething = true
-				}
-			} else if (mode & os.ModeType) == 0 {
-				// This is a regular file, write its contents
-				err = copyOutOf(restoredPath, archTar)
-				if err != nil {
-					fmt.Printf("%s : %s\n", restoredPath, err.Error())
-				} else {
-					wroteSomething = true
-				}
-			}
-
-			if wroteSomething {
-				// Restore this thing's mode, ownership, etc
-				err = os.Chmod(restoredPath, mode.Perm())
-				if err != nil {
-					fmt.Printf("%s : %s\n", restoredPath, err.Error())
-				}
-
-				err = RestoreOwnership(restoredPath, hdr)
-				if err != nil {
-					fmt.Printf("%s : %s\n", restoredPath, err.Error())
-				}
-
-				// I'm not trying to restore the access time, because
-				// it seems we can't store it correctly.
-				// It's not terribly important anyway :)
-				err = os.Chtimes(restoredPath, hdr.ModTime, hdr.ModTime)
-				if err != nil {
-					fmt.Printf("%s : %s\n", restoredPath, err.Error())
-				}
-
-				// TODO Extended attributes
+			readErr = unpackFile(restoredPath, hdr, archTar)
+			if readErr != nil {
+				fmt.Printf("%s : %s\n", restoredPath, readErr.Error())
+				errorCount += 1
 			}
 		}
 	}
 
+	if errorCount > 0 {
+		err = errors.New(fmt.Sprintf("Finished with %d errors", errorCount))
+	}
+
+	return err
+}
+
+// File unpack functions ...
+
+func testFile(restoredPath string, hdr *tar.Header, archTar io.Reader) (err error) {
+	fmt.Printf("%s\n", restoredPath)
 	return nil
+}
+
+func restoreFile(restoredPath string, hdr *tar.Header, archTar io.Reader) (err error) {
+	info := hdr.FileInfo()
+	mode := info.Mode()
+
+	if info.IsDir() {
+		err = os.Mkdir(restoredPath, mode.Perm())
+	} else if (mode & os.ModeSymlink) != 0 {
+		err = os.Symlink(hdr.Linkname, restoredPath)
+	} else if (mode & os.ModeType) == 0 {
+		// This is a regular file, write its contents
+		err = copyOutOf(restoredPath, archTar)
+	}
+
+	// Restore this thing's mode, ownership, etc
+	if err == nil {
+		err = os.Chmod(restoredPath, mode.Perm())
+	}
+
+	if err == nil {
+		err = RestoreOwnership(restoredPath, hdr)
+	}
+
+	if err == nil {
+		// I'm not trying to restore the access time, because
+		// it seems we can't store it correctly.
+		// It's not terribly important anyway :)
+		err = os.Chtimes(restoredPath, hdr.ModTime, hdr.ModTime)
+	}
+
+	// TODO Extended attributes
+	return
 }
