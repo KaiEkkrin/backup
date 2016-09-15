@@ -9,10 +9,10 @@ import (
 )
 
 type Seen interface {
-	// Returns true if we need to include a file in the
-	// new edition of the backup, else false.
-	// (filename, mtime, hash function).
-	Update(string, time.Time, func() ([]byte, error)) (bool, error)
+	// Includes the file in the new edition of the backup
+	// if required, using the supplied function.
+	// (filename, mtime, hash function, include function).
+	Update(string, time.Time, func() ([]byte, error), func() error) error
 
 	// Removes an edition from the database.
 	RemoveEdition(Edition) error

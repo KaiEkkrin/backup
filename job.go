@@ -200,94 +200,36 @@ func (r *RunningJob) DoBackup(excludes []string, encrypt Encrypt) (err error) {
 		}
 
 		// Work out whether to include it in the archive.
-		// We'll
-		includeThis := true
 		mode := info.Mode()
 		if (mode & os.ModeTemporary) != 0 {
-			includeThis = false
 			fmt.Printf("%s : Skipping temporary file\n", path)
 		} else if (mode & os.ModeDevice) != 0 {
-			includeThis = false
 			fmt.Printf("%s : Skipping device file\n", path)
 		} else if (mode & os.ModeNamedPipe) != 0 {
-			includeThis = false
 			fmt.Printf("%s : Skipping pipe file\n", path)
 		} else if (mode & os.ModeSocket) != 0 {
-			includeThis = false
 			fmt.Printf("%s : Skipping socket file\n", path)
 		} else if (mode & os.ModeType) == 0 {
 			// This is a regular file; look it up against
 			// the database
-			includeThis, err = seenDb.Update(absPath, info.ModTime(), func() ([]byte, error) {
+			err = seenDb.Update(absPath, info.ModTime(), func() ([]byte, error) {
 				return getHash(absPath)
+			}, func() (err error) {
+				return r.backupFile(path, info, mode, archTar)
 			})
 
 			if err != nil {
-				// TODO: Failed to read the file.  Remove this
-				// edition of it from the database, complain
-				// and carry on.
-				fmt.Printf("%s : Failed db update : %s\n", path, err.Error())
-				return err
+				// Report errors and continue, to do a best-effort backup.
+				fmt.Printf("%s : %s\n", path, err.Error())
 			}
-
-			if !includeThis {
-				fmt.Printf("%s : Already up to date\n", path)
-			}
-		}
-
-		if includeThis {
-			// If it's a symlink, read the link target:
-			link := ""
-			if (mode & os.ModeSymlink) != 0 {
-				link, err = os.Readlink(path)
-				if err != nil {
-					fmt.Printf("%s : Failed to follow symlink\n", path)
-					// TODO : Remove this edition from the db,
-					// and carry on
-					return err
-				}
-			}
-
-			// Write the header.
-			// Make sure I fix the name, which is defaulted
-			// to the leaf name here:
-			hdr, err := tar.FileInfoHeader(info, link)
+		} else {
+			// This is something like a directory.
+			// It doesn't go in the database, but it does
+			// go in the tar file:
+			err = r.backupFile(path, info, mode, archTar)
 			if err != nil {
-				return err
+				fmt.Printf("%s : %s\n", path, err.Error())
 			}
-
-			tarPath := filepath.Clean(path)
-			if info.IsDir() {
-				tarPath = fmt.Sprintf("%s%c", tarPath, os.PathSeparator)
-			}
-
-			hdr.Name = tarPath
-
-			// ...and the uid and gid;
-			// this is platform specific
-			AssignUserIds(info, hdr)
-
-			// ...and the modification time.
-			// Note that it looks like the AccessTime field doesn't work,
-			// so I'm ignoring it
-			hdr.ModTime = info.ModTime()
-
-			err = archTar.WriteHeader(hdr)
-			if err != nil {
-				return err
-			}
-
-			// If this is a real file, write the contents:
-			if (mode & os.ModeType) == 0 {
-				err = copyInto(path, archTar)
-				if err != nil {
-					// TODO: remove from the db, continue
-					fmt.Printf("%s : Failed to archive : %s\n", path, err.Error())
-					return err
-				}
-			}
-
-			fmt.Printf("%s : Archived\n", path)
 		}
 
 		return nil
@@ -297,6 +239,57 @@ func (r *RunningJob) DoBackup(excludes []string, encrypt Encrypt) (err error) {
 	// exist and blank entries?
 
 	return err
+}
+
+func (r *RunningJob) backupFile(path string, info os.FileInfo, mode os.FileMode, archTar *tar.Writer) (err error) {
+
+	// If it's a symlink, read the link target:
+	link := ""
+	if (mode & os.ModeSymlink) != 0 {
+		link, err = os.Readlink(path)
+		if err != nil {
+			return
+		}
+	}
+
+	// Write the header.
+	// Make sure I fix the name, which is defaulted
+	// to the leaf name here:
+	hdr, err := tar.FileInfoHeader(info, link)
+	if err != nil {
+		return
+	}
+
+	tarPath := filepath.Clean(path)
+	if info.IsDir() {
+		tarPath = fmt.Sprintf("%s%c", tarPath, os.PathSeparator)
+	}
+
+	hdr.Name = tarPath
+
+	// ...and the uid and gid;
+	// this is platform specific
+	AssignUserIds(info, hdr)
+
+	// ...and the modification time.
+	// Note that it looks like the AccessTime field doesn't work,
+	// so I'm ignoring it
+	hdr.ModTime = info.ModTime()
+
+	err = archTar.WriteHeader(hdr)
+	if err != nil {
+		return
+	}
+
+	// If this is a real file, write the contents:
+	if (mode & os.ModeType) == 0 {
+		err = copyInto(path, archTar)
+		if err != nil {
+			return
+		}
+	}
+
+	return
 }
 
 func (r *RunningJob) DoRestore(prefix string, encrypt Encrypt) (err error) {

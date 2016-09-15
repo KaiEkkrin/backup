@@ -29,7 +29,7 @@ type SeenDb struct {
 	Filename string
 }
 
-func (d *SeenDb) Update(filename string, mtimeNow time.Time, getHash func() ([]byte, error)) (updated bool, err error) {
+func (d *SeenDb) Update(filename string, mtimeNow time.Time, getHash func() ([]byte, error), includeFile func() error) (err error) {
 	mtimeNowUnix := mtimeNow.Unix()
 
 	// Find the most recent entry for this file:
@@ -50,7 +50,7 @@ func (d *SeenDb) Update(filename string, mtimeNow time.Time, getHash func() ([]b
 	}()
 
 	if err != nil {
-		return false, err
+		return
 	}
 
 	var hashThen, hashNow []byte
@@ -59,34 +59,40 @@ func (d *SeenDb) Update(filename string, mtimeNow time.Time, getHash func() ([]b
 		// If this file is up to date, we clearly don't
 		// need a new edition:
 		if mtimeNowUnix <= mtimeThenUnix {
-			return false, nil
+			return
 		}
 
 		// Check the hashes; we only need a new edition if
 		// the hash has changed
 		hashThen, err = base64.StdEncoding.DecodeString(hashStr)
 		if err != nil {
-			return false, err
+			return
 		}
 	}
 
 	hashNow, err = getHash()
 	if err != nil {
-		return false, err
+		return
 	}
 
 	if reflect.DeepEqual(hashNow, hashThen) {
-		return false, nil
+		return
 	}
 
-	// If we got here, we do need a new edition,
-	// insert it:
+	// Include the file:
+	err = includeFile()
+	if err != nil {
+		return
+	}
+
+	// We included the file successfully, update
+	// the database:
 	_, err = d.Tx.InsertNewEdition.Exec(
 		filename,
 		d.E.Unix(),
 		mtimeNowUnix,
 		base64.StdEncoding.EncodeToString(hashNow))
-	return true, err
+	return
 }
 
 func (d *SeenDb) RemoveEdition(edition Edition) (err error) {
