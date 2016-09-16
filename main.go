@@ -16,8 +16,6 @@ func main() {
 	 * structure. (backup.go)
 	 * TODO : Support:
 	 * - Removing old editions?
-	 * - Excludes in restore?
-	 * - Extra excludes on the command line (useful for restore)?
 	 * - Decrypt only (producing the .tar.gz)?
 	 * - Log file and stats printed?
 	 */

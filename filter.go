@@ -15,20 +15,10 @@ type Filter interface {
 	AddInclude(string) bool
 }
 
-// All our include patterns should go in the same
-// include filter, so that we can accept as
-// soon as any one of them matches.
-type IncludeFilter struct {
-	Patterns []string
-}
-
-// An include pattern includes things if any parent
-// of the path matches:
-func includeParents(pattern string, path string) bool {
-	included, err := filepath.Match(pattern, path)
-	if err != nil {
-		panic(err)
-	} else if included {
+// Tests a path and all its roots, returning as
+// soon as a test function call returns true.
+func testPathRoots(path string, test func(string) bool, base bool) bool {
+	if test(path) {
 		return true
 	}
 
@@ -37,15 +27,29 @@ func includeParents(pattern string, path string) bool {
 		// Really important -- chop the trailing
 		// separator character (otherwise filepath.Split()
 		// won't manage to split recursively)
-		return includeParents(pattern, parent[:len(parent)-1])
+		return testPathRoots(parent[:len(parent)-1], test, base)
 	} else {
-		return false
+		return base
 	}
+}
+
+// All our include patterns should go in the same
+// include filter, so that we can accept as
+// soon as any one of them matches.
+type IncludeFilter struct {
+	Patterns []string
 }
 
 func (f *IncludeFilter) includeInternal(path string) bool {
 	for i := 0; i < len(f.Patterns); i++ {
-		if includeParents(f.Patterns[i], path) {
+		if testPathRoots(path, func(p string) bool {
+			included, err := filepath.Match(f.Patterns[i], p)
+			if err != nil {
+				panic(err)
+			}
+
+			return included
+		}, false) {
 			return true
 		}
 	}
@@ -77,12 +81,14 @@ type ExcludeFilter struct {
 }
 
 func (f *ExcludeFilter) includeInternal(path string) bool {
-	included, err := filepath.Match(f.Pattern, path)
-	if err != nil {
-		panic(err)
-	}
+	return !testPathRoots(path, func(p string) bool {
+		excluded, err := filepath.Match(f.Pattern, p)
+		if err != nil {
+			panic(err)
+		}
 
-	return !included
+		return excluded
+	}, false)
 }
 
 func (f *ExcludeFilter) Include(path string) bool {
@@ -165,8 +171,10 @@ func (f *Filters) WithExcludes(patterns []string) *Filters {
 }
 
 func (f *Filters) Include(path string) bool {
+	//fmt.Printf("Testing against %d filters\n", len(f.F))
 	for i := 0; i < len(f.F); i++ {
 		if !f.F[i].Include(path) {
+			//fmt.Printf("Filter %d (%q) says no\n", i, f.F[i])
 			return false
 		}
 	}
