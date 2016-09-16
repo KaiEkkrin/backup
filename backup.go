@@ -55,7 +55,7 @@ func readRunningJobs(jobPath string, edition *Edition) (runningJobs []*RunningJo
 	return runningJobs, err
 }
 
-func RunBackup(jobPath string) (err error) {
+func RunBackup(jobPath string, filter *Filters) (err error) {
 	// Decree an edition for this backup:
 	edition := EditionFromNow()
 	fmt.Printf("Running backup edition %s\n", edition.String())
@@ -69,7 +69,6 @@ func RunBackup(jobPath string) (err error) {
 
 	// Compose the list of non-job specific excludes out of
 	// all running jobs (all jobs must exclude these!)
-	var nonSpecificExcludes []string
 	for i := 0; i < len(runningJobs); i++ {
 		excl, err := runningJobs[i].GetNonSpecificExcludes()
 		if err != nil {
@@ -82,14 +81,14 @@ func RunBackup(jobPath string) (err error) {
 				return err
 			}
 
-			nonSpecificExcludes = append(nonSpecificExcludes, absExcl)
+			filter.AddExclude(absExcl)
 		}
 	}
 
 	// Run all the jobs
 	for i := 0; i < len(runningJobs); i++ {
 		encrypt := NewEncryptKblob(runningJobs[i].J.Passphrase)
-		err = runningJobs[i].DoBackup(nonSpecificExcludes, encrypt)
+		err = runningJobs[i].DoBackup(filter, encrypt)
 		if err != nil {
 			return err
 		}
@@ -98,7 +97,7 @@ func RunBackup(jobPath string) (err error) {
 	return nil
 }
 
-func RunUnpack(jobPath string, prefix string, repl Replacement, what int) (err error) {
+func RunUnpack(jobPath string, filter Filter, prefix string, repl Replacement, what int) (err error) {
 	// We don't need an edition here:
 	runningJobs, err := readRunningJobs(jobPath, nil)
 	if err != nil {
@@ -108,7 +107,7 @@ func RunUnpack(jobPath string, prefix string, repl Replacement, what int) (err e
 	// Run all the jobs
 	for i := 0; i < len(runningJobs); i++ {
 		encrypt := NewEncryptKblob(runningJobs[i].J.Passphrase)
-		err = runningJobs[i].DoUnpack(prefix, repl, encrypt, what)
+		err = runningJobs[i].DoUnpack(filter, prefix, repl, encrypt, what)
 		if err != nil {
 			return err
 		}

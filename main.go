@@ -4,9 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func main() {
+	sep := fmt.Sprintf("%c", os.PathListSeparator)
+
 	/* Our argument will be a json file that describes
 	 * the backup job(s) to run.
 	 * That file itself is an encoding of the Job
@@ -23,15 +26,22 @@ func main() {
 	restore := flag.Bool("restore", false, "Set this to do a restore")
 	jobs := flag.String("job", "backup.json", "Json file describing the backup job")
 	prefix := flag.String("prefix", "", "Optional restore prefix")
-	replaceStart := flag.String("replaceStart", "", fmt.Sprintf("Optional list of <start of path in archive>%c<replacement>%c...", os.PathListSeparator, os.PathListSeparator))
-	replaceAny := flag.String("replace", "", fmt.Sprintf("Optional list of <path in archive>%c<replacement>%c...", os.PathListSeparator, os.PathListSeparator))
-	replaceAll := flag.String("replaceAll", "", fmt.Sprintf("Optional list of <path in archive>%c<replacement>%c...", os.PathListSeparator, os.PathListSeparator))
+	replaceStart := flag.String("replaceStart", "", fmt.Sprintf("Optional list of <start of path in archive>%s<replacement>%s...", sep, sep))
+	replaceAny := flag.String("replace", "", fmt.Sprintf("Optional list of <path in archive>%s<replacement>%s...", sep, sep))
+	replaceAll := flag.String("replaceAll", "", fmt.Sprintf("Optional list of <path in archive>%s<replacement>%s...", sep, sep))
+	include := flag.String("include", "", fmt.Sprintf("Optional list of <path>%s<path>%s... to include", sep, sep))
+	exclude := flag.String("exclude", "", fmt.Sprintf("Optional list of <path>%s<path>%s... to exclude", sep, sep))
 
 	flag.Parse()
 
+	includeArray := strings.Split(*include, sep)
+	excludeArray := strings.Split(*exclude, sep)
+
+	filter := new(Filters).WithIncludes(includeArray).WithExcludes(excludeArray)
+
 	var err error
 	if *backup {
-		err = RunBackup(*jobs)
+		err = RunBackup(*jobs, filter)
 	} else {
 		repl := new(Replacements)
 		err = repl.AddReplStart(*replaceStart)
@@ -62,7 +72,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		err = RunUnpack(*jobs, *prefix, repl, what)
+		err = RunUnpack(*jobs, filter, *prefix, repl, what)
 	}
 
 	if err != nil {

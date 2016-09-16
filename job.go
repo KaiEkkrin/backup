@@ -118,16 +118,20 @@ func copyOutOf(filename string, reader io.Reader) error {
 	return err
 }
 
-func (r *RunningJob) DoBackup(excludes []string, encrypt Encrypt) (err error) {
+func (r *RunningJob) DoBackup(filter *Filters, encrypt Encrypt) (err error) {
 	// TODO Proper log file and summary on stdout
 	fmt.Printf("Running backup %s ...\n", r.J.BaseName)
 
-	// Construct all excludes (out of the general ones
+	// Construct the full filter (out of the general ones
 	// and the specific ones to this job)
-	allExcludes := append(excludes, r.J.Excludes...)
+	fullFilter := filter.WithExcludes(r.J.Excludes)
+
+	// If we have an include filter, add the root path of
+	// the job to it, otherwise everything will be
+	// excluded and that would be bad :)
+	fullFilter.AddIncludeToExisting(r.J.Path)
 
 	// Open up the database:
-	// TODO: Encryption (here and below!)
 	fmt.Printf("Opening database %s\n", r.GetDbFilename())
 	seenDb, err := NewSeenDb(r.GetDbFilename(), encrypt, r.E)
 	if err != nil {
@@ -181,25 +185,9 @@ func (r *RunningJob) DoBackup(excludes []string, encrypt Encrypt) (err error) {
 			return err
 		}
 
-		for i := 0; i < len(allExcludes); i++ {
-			// Check the whole path
-			excluded, err := filepath.Match(allExcludes[i], absPath)
-			if err != nil {
-				return err
-			}
-
-			// If that didn't match, check the leaf name
-			if !excluded {
-				excluded, err = filepath.Match(allExcludes[i], info.Name())
-				if err != nil {
-					return err
-				}
-			}
-
-			if excluded {
-				fmt.Printf("%s : Excluded\n", path)
-				return getIgnoreValue()
-			}
+		if !fullFilter.Include(path) {
+			fmt.Printf("%s : Excluded\n", path)
+			return getIgnoreValue()
 		}
 
 		// Work out whether to include it in the archive.
@@ -296,7 +284,7 @@ func (r *RunningJob) backupFile(path string, info os.FileInfo, mode os.FileMode,
 }
 
 // `what' should be one of: Unpack_Test, Unpack_Restore
-func (r *RunningJob) DoUnpack(prefix string, repl Replacement, encrypt Encrypt, what int) (err error) {
+func (r *RunningJob) DoUnpack(filter Filter, prefix string, repl Replacement, encrypt Encrypt, what int) (err error) {
 	// TODO Again, proper log file and summary on stdout
 	fmt.Printf("Running restore %s...\n", r.J.BaseName)
 
@@ -318,7 +306,7 @@ func (r *RunningJob) DoUnpack(prefix string, repl Replacement, encrypt Encrypt, 
 	}
 
 	for i := 0; i < archives.Len(); i++ {
-		err = unpackArchive(archives.GetName(i), prefix, repl, encrypt, unpackFile)
+		err = unpackArchive(archives.GetName(i), filter, prefix, repl, encrypt, unpackFile)
 		if err != nil {
 			return err
 		}
@@ -327,7 +315,7 @@ func (r *RunningJob) DoUnpack(prefix string, repl Replacement, encrypt Encrypt, 
 	return nil
 }
 
-func unpackArchive(archive string, prefix string, repl Replacement, encrypt Encrypt, unpackFile func(string, *tar.Header, io.Reader) error) (err error) {
+func unpackArchive(archive string, filter Filter, prefix string, repl Replacement, encrypt Encrypt, unpackFile func(string, *tar.Header, io.Reader) error) (err error) {
 	fmt.Printf("Restoring %s...\n", archive)
 
 	if len(prefix) > 0 {
@@ -359,12 +347,17 @@ func unpackArchive(archive string, prefix string, repl Replacement, encrypt Encr
 	errorCount := 0
 	var readErr error
 	for readErr == nil {
+		includeFile := false
+
 		var hdr *tar.Header
 		hdr, readErr = archTar.Next()
 		if readErr != nil && readErr != io.EOF {
 			return readErr
 		} else if readErr == nil {
+			includeFile = filter.Include(hdr.Name)
+		}
 
+		if includeFile {
 			replacedPath := repl.Replace(hdr.Name)
 			restoredPath := filepath.Join(prefix, replacedPath)
 			restoreErr := unpackFile(restoredPath, hdr, archTar)
