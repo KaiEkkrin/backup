@@ -10,6 +10,7 @@ type SeenTransaction struct {
 	Tx                 *sql.Tx
 	GetLatestMtimeHash *sql.Stmt
 	InsertNewEdition   *sql.Stmt
+	ListEditions       *sql.Stmt
 	RemoveEdition      *sql.Stmt
 }
 
@@ -37,11 +38,17 @@ func NewSeenTransaction(db *sql.DB) (*SeenTransaction, error) {
 		return nil, err
 	}
 
+	listEditions, err := tx.Prepare(
+		`select edition from files`)
+	if err != nil {
+		return nil, err
+	}
+
 	removeEdition, err := tx.Prepare(
 		`delete from files where edition=?`)
 	if err != nil {
 		return nil, err
 	}
 
-	return &SeenTransaction{tx, getLatestMtimeHash, insertNewEdition, removeEdition}, nil
+	return &SeenTransaction{tx, getLatestMtimeHash, insertNewEdition, listEditions, removeEdition}, nil
 }

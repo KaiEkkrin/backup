@@ -285,6 +285,29 @@ func (r *RunningJob) backupFile(prefixedPath string, path string, info os.FileIn
 	return
 }
 
+func (r *RunningJob) DoListEditions(encrypt Encrypt) error {
+	// Open up the database:
+	fmt.Printf("Opening database %s\n", r.GetDbFilename())
+	seenDb, err := NewSeenDb(r.GetDbFilename(), encrypt, r.E)
+	if err != nil {
+		return err
+	}
+	defer seenDb.Close()
+
+	// Get the editions:
+	var editions *SortedEditions
+	editions, err = seenDb.ListEditions()
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < editions.Len(); i++ {
+		fmt.Printf("%s : %s\n", r.J.BaseName, editions.At(i).String())
+	}
+
+	return nil
+}
+
 // `what' should be one of: Unpack_Test, Unpack_Restore
 func (r *RunningJob) DoUnpack(filter Filter, prefix string, repl Replacement, encrypt Encrypt, what int) (err error) {
 	// TODO Again, proper log file and summary on stdout

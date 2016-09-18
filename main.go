@@ -22,6 +22,8 @@ func main() {
 	backup := flag.Bool("backup", false, "Set this to do a backup")
 	test := flag.Bool("test", false, "Set this to test the backup files and list their contents")
 	restore := flag.Bool("restore", false, "Set this to do a restore")
+	listEditions := flag.Bool("listEditions", false, "Set this to just list the editions of this backup")
+
 	jobs := flag.String("job", "backup.json", "Json file describing the backup job")
 	prefix := flag.String("prefix", "", "Optional path prefix")
 	replaceStart := flag.String("replaceStart", "", fmt.Sprintf("Optional list of <start of path in archive>%s<replacement>%s...", sep, sep))
@@ -40,6 +42,8 @@ func main() {
 	var err error
 	if *backup {
 		err = RunBackup(*jobs, filter, *prefix)
+	} else if *listEditions {
+		err = RunListEditions(*jobs)
 	} else {
 		repl := new(Replacements)
 		err = repl.AddReplStart(*replaceStart)

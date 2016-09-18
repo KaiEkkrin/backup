@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"sort"
 	"time"
 )
 
@@ -92,6 +93,35 @@ func (d *SeenDb) Update(filename string, mtimeNow time.Time, getHash func() ([]b
 		d.E.Unix(),
 		mtimeNowUnix,
 		base64.StdEncoding.EncodeToString(hashNow))
+	return
+}
+
+func (d *SeenDb) ListEditions() (editions *SortedEditions, err error) {
+	editionsUnixMap := make(map[int64]struct{})
+
+	var rows *sql.Rows
+	rows, err = d.Tx.ListEditions.Query()
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var editionUnix int64
+		err = rows.Scan(&editionUnix)
+		if err != nil {
+			return
+		}
+
+		editionsUnixMap[editionUnix] = struct{}{}
+	}
+
+	editions = new(SortedEditions)
+	for key := range editionsUnixMap {
+		editions.Append(EditionFromUnix(key))
+	}
+
+	sort.Sort(editions)
 	return
 }
 

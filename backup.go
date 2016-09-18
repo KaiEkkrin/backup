@@ -91,6 +91,25 @@ func RunBackup(jobPath string, filter *Filters, prefix string) (err error) {
 	return nil
 }
 
+func RunListEditions(jobPath string) error {
+	// Read that job file in, and compose a list
+	// of backup jobs:
+	runningJobs, err := readRunningJobs(jobPath, nil)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(runningJobs); i++ {
+		encrypt := NewEncryptKblob(runningJobs[i].J.Passphrase)
+		err = runningJobs[i].DoListEditions(encrypt)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func RunUnpack(jobPath string, filter Filter, prefix string, repl Replacement, what int) (err error) {
 	// We don't need an edition here:
 	runningJobs, err := readRunningJobs(jobPath, nil)

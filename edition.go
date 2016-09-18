@@ -44,3 +44,31 @@ func EditionFromString(str string) (*Edition, error) {
 func EditionFromUnix(unix int64) *Edition {
 	return &Edition{time.Unix(unix, 0)}
 }
+
+// For sorting them:
+
+type SortedEditions struct {
+	E []*Edition
+}
+
+func (s *SortedEditions) Len() int {
+	return len(s.E)
+}
+
+func (s *SortedEditions) Less(i, j int) bool {
+	return s.E[i].When.Before(s.E[j].When)
+}
+
+func (s *SortedEditions) Swap(i, j int) {
+	tmp := s.E[i]
+	s.E[i] = s.E[j]
+	s.E[j] = tmp
+}
+
+func (s *SortedEditions) At(i int) *Edition {
+	return s.E[i]
+}
+
+func (s *SortedEditions) Append(edition *Edition) {
+	s.E = append(s.E, edition)
+}
