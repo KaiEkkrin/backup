@@ -118,7 +118,7 @@ func copyOutOf(filename string, reader io.Reader) error {
 	return err
 }
 
-func (r *RunningJob) DoBackup(filter *Filters, encrypt Encrypt) (err error) {
+func (r *RunningJob) DoBackup(filter *Filters, prefix string, encrypt Encrypt) (err error) {
 	// TODO Proper log file and summary on stdout
 	fmt.Printf("Running backup %s ...\n", r.J.BaseName)
 
@@ -160,8 +160,11 @@ func (r *RunningJob) DoBackup(filter *Filters, encrypt Encrypt) (err error) {
 	defer archTar.Close()
 
 	// Now we can walk the tree scooping everything.
+	// We include the prefix only onto the source files
+	// that we read from, and drop it everywhere else,
+	// so that it is "invisible" in the final backup.
 	// TODO: How to avoid transitioning across filesystems?
-	err = filepath.Walk(r.J.Path, func(path string, info os.FileInfo, walkErr error) error {
+	err = filepath.Walk(prefix+r.J.Path, func(prefixedPath string, info os.FileInfo, walkErr error) error {
 
 		getIgnoreValue := func() error {
 			if info.IsDir() {
@@ -170,6 +173,10 @@ func (r *RunningJob) DoBackup(filter *Filters, encrypt Encrypt) (err error) {
 				return nil
 			}
 		}
+
+		// Strip the prefix to get the path the
+		// backup will see:
+		path := strings.TrimPrefix(prefixedPath, prefix)
 
 		// If there was a problem, log it, and probably
 		// ignore it:
@@ -180,11 +187,6 @@ func (r *RunningJob) DoBackup(filter *Filters, encrypt Encrypt) (err error) {
 
 		// Check whether to skip this.  If it's a directory,
 		// we'll skip the whole directory.
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			return err
-		}
-
 		if !fullFilter.Include(path) {
 			fmt.Printf("%s : Excluded\n", path)
 			return getIgnoreValue()
@@ -203,10 +205,10 @@ func (r *RunningJob) DoBackup(filter *Filters, encrypt Encrypt) (err error) {
 		} else if (mode & os.ModeType) == 0 {
 			// This is a regular file; look it up against
 			// the database
-			err = seenDb.Update(absPath, info.ModTime(), func() ([]byte, error) {
-				return getHash(absPath)
+			err = seenDb.Update(path, info.ModTime(), func() ([]byte, error) {
+				return getHash(prefixedPath)
 			}, func() (err error) {
-				return r.backupFile(path, info, mode, archTar)
+				return r.backupFile(prefixedPath, path, info, mode, archTar)
 			})
 
 			if err != nil {
@@ -217,7 +219,7 @@ func (r *RunningJob) DoBackup(filter *Filters, encrypt Encrypt) (err error) {
 			// This is something like a directory.
 			// It doesn't go in the database, but it does
 			// go in the tar file:
-			err = r.backupFile(path, info, mode, archTar)
+			err = r.backupFile(prefixedPath, path, info, mode, archTar)
 			if err != nil {
 				fmt.Printf("%s : %s\n", path, err.Error())
 			}
@@ -232,12 +234,12 @@ func (r *RunningJob) DoBackup(filter *Filters, encrypt Encrypt) (err error) {
 	return err
 }
 
-func (r *RunningJob) backupFile(path string, info os.FileInfo, mode os.FileMode, archTar *tar.Writer) (err error) {
+func (r *RunningJob) backupFile(prefixedPath string, path string, info os.FileInfo, mode os.FileMode, archTar *tar.Writer) (err error) {
 
 	// If it's a symlink, read the link target:
 	link := ""
 	if (mode & os.ModeSymlink) != 0 {
-		link, err = os.Readlink(path)
+		link, err = os.Readlink(prefixedPath)
 		if err != nil {
 			return
 		}
@@ -251,7 +253,7 @@ func (r *RunningJob) backupFile(path string, info os.FileInfo, mode os.FileMode,
 		return
 	}
 
-	tarPath := filepath.Clean(path)
+	tarPath := path
 	if info.IsDir() {
 		tarPath = fmt.Sprintf("%s%c", tarPath, os.PathSeparator)
 	}
@@ -274,7 +276,7 @@ func (r *RunningJob) backupFile(path string, info os.FileInfo, mode os.FileMode,
 
 	// If this is a real file, write the contents:
 	if (mode & os.ModeType) == 0 {
-		err = copyInto(path, archTar)
+		err = copyInto(prefixedPath, archTar)
 		if err != nil {
 			return
 		}

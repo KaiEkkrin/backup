@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 )
 
 type Job struct {
@@ -55,7 +54,7 @@ func readRunningJobs(jobPath string, edition *Edition) (runningJobs []*RunningJo
 	return runningJobs, err
 }
 
-func RunBackup(jobPath string, filter *Filters) (err error) {
+func RunBackup(jobPath string, filter *Filters, prefix string) (err error) {
 	// Decree an edition for this backup:
 	edition := EditionFromNow()
 	fmt.Printf("Running backup edition %s\n", edition.String())
@@ -76,19 +75,14 @@ func RunBackup(jobPath string, filter *Filters) (err error) {
 		}
 
 		for j := 0; j < len(excl); j++ {
-			absExcl, err := filepath.Abs(excl[j])
-			if err != nil {
-				return err
-			}
-
-			filter.AddExclude(absExcl)
+			filter.AddExclude(excl[j])
 		}
 	}
 
 	// Run all the jobs
 	for i := 0; i < len(runningJobs); i++ {
 		encrypt := NewEncryptKblob(runningJobs[i].J.Passphrase)
-		err = runningJobs[i].DoBackup(filter, encrypt)
+		err = runningJobs[i].DoBackup(filter, prefix, encrypt)
 		if err != nil {
 			return err
 		}

@@ -58,16 +58,7 @@ func (f *IncludeFilter) includeInternal(path string) bool {
 }
 
 func (f *IncludeFilter) Include(path string) bool {
-	if f.includeInternal(path) {
-		return true
-	}
-
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		panic(err)
-	}
-
-	return f.includeInternal(absPath)
+	return f.includeInternal(path)
 }
 
 func (f *IncludeFilter) AddInclude(pattern string) bool {
@@ -93,15 +84,6 @@ func (f *ExcludeFilter) includeInternal(path string) bool {
 
 func (f *ExcludeFilter) Include(path string) bool {
 	if !f.includeInternal(path) {
-		return false
-	}
-
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		panic(err)
-	}
-
-	if !f.includeInternal(absPath) {
 		return false
 	}
 
