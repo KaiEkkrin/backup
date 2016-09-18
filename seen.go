@@ -15,10 +15,11 @@ type Seen interface {
 	Update(string, time.Time, func() ([]byte, error), func() error) error
 
 	// Lists the editions in the database.
-	ListEditions() (SortedEditions, error)
+	ListEditions() (*SortedEditions, error)
 
-	// Removes an edition from the database.
-	RemoveEdition(Edition) error
+	// Removes editions later than the given one from
+	// the database.
+	RemoveEditionsAfter(*Edition) error
 
 	// Closes stuff.
 	Close() error

@@ -118,7 +118,7 @@ func copyOutOf(filename string, reader io.Reader) error {
 	return err
 }
 
-func (r *RunningJob) DoBackup(filter *Filters, prefix string, encrypt Encrypt) (err error) {
+func (r *RunningJob) DoBackup(filter *Filters, prefix string, encrypt Encrypt, removeAfterEdition *Edition) (err error) {
 	// TODO Proper log file and summary on stdout
 	fmt.Printf("Running backup %s ...\n", r.J.BaseName)
 
@@ -138,6 +138,29 @@ func (r *RunningJob) DoBackup(filter *Filters, prefix string, encrypt Encrypt) (
 		return err
 	}
 	defer seenDb.Close()
+
+	// If applicable, remove later editions:
+	if removeAfterEdition != nil {
+		err = seenDb.RemoveEditionsAfter(removeAfterEdition)
+		if err != nil {
+			return err
+		}
+
+		var archiveNames *ArchiveNames
+		archiveNames, err = r.GetOldEditionFilenames()
+		if err != nil {
+			return err
+		}
+
+		for i := 0; i < archiveNames.Len(); i++ {
+			if archiveNames.Names[i].E.When.After(removeAfterEdition.When) {
+				err = os.Remove(archiveNames.Names[i].Name)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
 
 	// Open up the new archive:
 	fmt.Printf("Opening new archive %s\n", r.GetNewEditionFilename())

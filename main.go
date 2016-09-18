@@ -31,6 +31,7 @@ func main() {
 	replaceAll := flag.String("replaceAll", "", fmt.Sprintf("Optional list of <path in archive>%s<replacement>%s...", sep, sep))
 	include := flag.String("include", "", fmt.Sprintf("Optional list of <path>%s<path>%s... to include", sep, sep))
 	exclude := flag.String("exclude", "", fmt.Sprintf("Optional list of <path>%s<path>%s... to exclude", sep, sep))
+	removeAfter := flag.String("removeAfter", "", fmt.Sprintf("Optional edition to base the backup on"))
 
 	flag.Parse()
 
@@ -41,7 +42,16 @@ func main() {
 
 	var err error
 	if *backup {
-		err = RunBackup(*jobs, filter, *prefix)
+		var removeAfterEdition *Edition
+		if len(*removeAfter) > 0 {
+			removeAfterEdition, err = EditionFromString(*removeAfter)
+			if err != nil {
+				fmt.Printf("removeAfter : %s\n", err.Error())
+				os.Exit(1)
+			}
+		}
+
+		err = RunBackup(*jobs, filter, *prefix, removeAfterEdition)
 	} else if *listEditions {
 		err = RunListEditions(*jobs)
 	} else {

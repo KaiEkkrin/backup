@@ -125,8 +125,8 @@ func (d *SeenDb) ListEditions() (editions *SortedEditions, err error) {
 	return
 }
 
-func (d *SeenDb) RemoveEdition(edition Edition) (err error) {
-	_, err = d.Tx.RemoveEdition.Exec(edition.Unix())
+func (d *SeenDb) RemoveEditionsAfter(edition *Edition) (err error) {
+	_, err = d.Tx.RemoveEditionsAfter.Exec(edition.Unix())
 	return err
 }
 

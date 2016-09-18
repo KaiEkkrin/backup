@@ -54,7 +54,7 @@ func readRunningJobs(jobPath string, edition *Edition) (runningJobs []*RunningJo
 	return runningJobs, err
 }
 
-func RunBackup(jobPath string, filter *Filters, prefix string) (err error) {
+func RunBackup(jobPath string, filter *Filters, prefix string, removeAfterEdition *Edition) (err error) {
 	// Decree an edition for this backup:
 	edition := EditionFromNow()
 	fmt.Printf("Running backup edition %s\n", edition.String())
@@ -82,7 +82,7 @@ func RunBackup(jobPath string, filter *Filters, prefix string) (err error) {
 	// Run all the jobs
 	for i := 0; i < len(runningJobs); i++ {
 		encrypt := NewEncryptKblob(runningJobs[i].J.Passphrase)
-		err = runningJobs[i].DoBackup(filter, prefix, encrypt)
+		err = runningJobs[i].DoBackup(filter, prefix, encrypt, removeAfterEdition)
 		if err != nil {
 			return err
 		}
