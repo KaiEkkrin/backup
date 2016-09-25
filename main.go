@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -40,7 +41,23 @@ func main() {
 
 	filter := new(Filters).WithIncludes(includeArray).WithExcludes(excludeArray)
 
-	var err error
+	// Change into the directory of the job spec:
+	oldWd, err := os.Getwd()
+	if err != nil {
+		fmt.Printf("Getwd : %s\n", err.Error())
+		os.Exit(1)
+	}
+	defer os.Chdir(oldWd)
+
+	jobDir, jobFile := filepath.Split(*jobs)
+	if len(jobDir) > 0 {
+		err = os.Chdir(jobDir)
+		if err != nil {
+			fmt.Printf("Chdir %s : %s\n", jobDir, err.Error())
+			os.Exit(1)
+		}
+	}
+
 	if *backup {
 		var removeAfterEdition *Edition
 		if len(*removeAfter) > 0 {
@@ -51,9 +68,9 @@ func main() {
 			}
 		}
 
-		err = RunBackup(*jobs, filter, *prefix, removeAfterEdition)
+		err = RunBackup(jobFile, filter, *prefix, removeAfterEdition)
 	} else if *listEditions {
-		err = RunListEditions(*jobs)
+		err = RunListEditions(jobFile)
 	} else {
 		repl := new(Replacements)
 		err = repl.AddReplStart(*replaceStart)
@@ -84,7 +101,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		err = RunUnpack(*jobs, filter, *prefix, repl, what)
+		err = RunUnpack(jobFile, filter, *prefix, repl, what)
 	}
 
 	if err != nil {
