@@ -1,3 +1,7 @@
+## Installation
+
+Install [Go](https://golang.org), then run `go get https://github.com/kaiekkrin/backup`.
+
 ## Example
 
 backup.json
