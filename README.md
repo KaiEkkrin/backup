@@ -24,6 +24,8 @@ This creates the files `mybackup_seen.db.kblob` and `mybackup_<datetime>.tar.kbl
 
 To secure your backup, save the `kblob` files to offline storage and the `json` file somewhere else, e.g. in your password safe.
 
+You don't need to include `/path/to/` in the exclude list, Backup automatically excludes its own configuration and archive files.
+
 ### To verify and restore your backup
 
 ```
